@@ -1,0 +1,5 @@
+{
+  "name": "AI Tools Interface",
+  "description": "A prototype for a publisher-grade workflow application with AI tools, user and token management, and a metadata extraction feature powered by the Gemini API.",
+  "requestFramePermissions": []
+}
