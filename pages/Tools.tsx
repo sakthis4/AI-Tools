@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import MetadataExtractor from './MetadataExtractor';
 import { SparklesIcon } from '../components/icons/Icons';
@@ -23,7 +22,7 @@ export default function Tools() {
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Extract Metadata</h3>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
-              Analyzes documents (PDF, DOCX) to find figures, tables, images, and more, generating alt text, keywords, and taxonomy.
+              Analyzes PDF documents to find figures, tables, images, and more, generating alt text, keywords, and taxonomy.
             </p>
           </div>
           <button

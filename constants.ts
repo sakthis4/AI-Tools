@@ -1,4 +1,3 @@
-
 import { User, Role, UsageLog } from './types';
 
 export const USERS: User[] = [
@@ -63,7 +62,7 @@ export const HELP_CONTENT = {
     sections: [
         {
             title: 'How to Use the Metadata Extractor',
-            content: 'Select/upload a file or paste a public URL. The tool accepts PDF (.pdf) and Word (.docx) files up to 100 MB.'
+            content: 'Select or upload a file. The tool accepts PDF (.pdf) files up to 100 MB.'
         },
         {
             title: 'What it Does',

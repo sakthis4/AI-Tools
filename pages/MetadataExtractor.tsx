@@ -14,6 +14,18 @@ interface MetadataExtractorProps {
   onBack: () => void;
 }
 
+const sortAssets = (assets: ExtractedAsset[]): ExtractedAsset[] => {
+    return assets.sort((a, b) => {
+        if (a.pageNumber !== b.pageNumber) {
+            return a.pageNumber - b.pageNumber;
+        }
+        if (a.boundingBox && b.boundingBox) {
+            return a.boundingBox.y - b.boundingBox.y;
+        }
+        return 0;
+    });
+};
+
 const LazyPdfPage = ({ pdfDoc, pageNum, scale, viewerRef }: { pdfDoc: pdfjsLib.PDFDocumentProxy; pageNum: number; scale: number; viewerRef: React.RefObject<HTMLDivElement> }) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -103,6 +115,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
   // Asset Selection State
   const [selectionMode, setSelectionMode] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
+  const [isGeneratingSelection, setIsGeneratingSelection] = useState(false);
   const [selectionRect, setSelectionRect] = useState<{ pageIndex: number; rect: BoundingBox; } | null>(null);
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number; } | null>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -129,7 +142,6 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
     if (!viewerRef.current) return;
     const container = viewerRef.current;
     
-    // Give browser a moment to render to get correct width
     await new Promise(resolve => setTimeout(resolve, 0));
 
     const style = window.getComputedStyle(container);
@@ -205,8 +217,8 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
         pageRefs.current = Array(pdf.numPages).fill(null);
         
         setStatus('extracting');
-        const allAssets: ExtractedAsset[] = [];
-        const API_SCALE = 1.5; // Use a fixed, high-res scale for API calls
+        let allAssets: ExtractedAsset[] = [];
+        const API_SCALE = 1.5;
 
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             setStatusMessage(`Analyzing page ${pageNum} of ${pdf.numPages}...`);
@@ -231,8 +243,8 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
                     id: crypto.randomUUID(),
                     pageNumber: pageNum,
                 }));
-                allAssets.push(...newAssetsWithContext);
-                setExtractedAssets([...allAssets]); 
+                allAssets = [...allAssets, ...newAssetsWithContext];
+                setExtractedAssets(sortAssets(allAssets)); 
             }
         }
         
@@ -353,12 +365,10 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
   };
   
   const handleGenerateForSelection = async () => {
-    if (!selectionRect || !pdfDoc) return;
+    if (!selectionRect || !pdfDoc || isGeneratingSelection) return;
     const { pageIndex, rect: selectionBox } = selectionRect;
     
-    setStatusMessage('Generating metadata for selection...');
-    const originalStatus = status;
-    setStatus('extracting');
+    setIsGeneratingSelection(true);
 
     try {
         const page = await pdfDoc.getPage(pageIndex + 1);
@@ -394,16 +404,15 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
             pageNumber: pageIndex + 1,
             boundingBox: selectionBox,
         };
-
-        setExtractedAssets(prev => [...prev, newAsset]);
+        
+        setExtractedAssets(prev => sortAssets([...prev, newAsset]));
         addToast({ type: 'success', message: `New asset "${newAsset.assetId}" added!` });
 
     } catch (error) {
         console.error("Failed to generate metadata for selection:", error);
         addToast({ type: 'error', message: 'Could not generate metadata for selection.' });
     } finally {
-        setStatus(originalStatus);
-        setStatusMessage('');
+        setIsGeneratingSelection(false);
         setSelectionRect(null);
         setSelectionMode(false);
     }
@@ -461,26 +470,30 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
                     {extractedAssets.filter(a => a.pageNumber === index + 1 && a.id === selectedAssetId && a.boundingBox).map(asset => (
                         <div
                           key={`highlight-${asset.id}`}
-                          className="absolute border-2 border-primary-500 bg-primary-500/30 pointer-events-none rounded-sm"
+                          className="absolute pointer-events-none"
                           style={{
                             top: `${asset.boundingBox!.y}%`,
                             left: `${asset.boundingBox!.x}%`,
                             width: `${asset.boundingBox!.width}%`,
                             height: `${asset.boundingBox!.height}%`,
                           }}
-                        />
+                        >
+                            <div className="w-full h-full bg-primary-500/30 ring-2 ring-primary-500 rounded-sm"></div>
+                        </div>
                     ))}
                     {/* Show current selection rectangle */}
                     {selectionRect && selectionRect.pageIndex === index && (
                        <div
-                          className="absolute border-2 border-dashed border-red-500 bg-red-500/20 pointer-events-none"
+                          className="absolute pointer-events-none"
                           style={{
                             top: `${selectionRect.rect.y}%`,
                             left: `${selectionRect.rect.x}%`,
                             width: `${selectionRect.rect.width}%`,
                             height: `${selectionRect.rect.height}%`,
                           }}
-                        />
+                        >
+                            <div className="w-full h-full bg-red-500/20 ring-2 ring-dashed ring-red-500"></div>
+                        </div>
                     )}
                 </div>
             ))}
@@ -493,8 +506,17 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
                   transform: `translateY(8px)`
                 }}
               >
-                  <button onClick={handleGenerateForSelection} className="px-2 py-1 text-xs bg-primary-500 text-white rounded hover:bg-primary-600">Generate Metadata</button>
-                  <button onClick={() => setSelectionRect(null)} className="p-1 text-gray-500 hover:text-red-500"><XIcon className="h-4 w-4" /></button>
+                {isGeneratingSelection ? (
+                    <div className="flex items-center px-2 py-1 text-xs">
+                        <Spinner size="sm" />
+                        <span className="ml-2">Generating...</span>
+                    </div>
+                ) : (
+                    <>
+                        <button onClick={handleGenerateForSelection} className="px-2 py-1 text-xs bg-primary-500 text-white rounded hover:bg-primary-600">Generate</button>
+                        <button onClick={() => setSelectionRect(null)} className="p-1 text-gray-500 hover:text-red-500"><XIcon className="h-4 w-4" /></button>
+                    </>
+                )}
               </div>
             )}
         </div>
@@ -570,6 +592,10 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
                                                 />
                                             </div>
                                         </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Taxonomy</label>
+                                        <input type="text" value={asset.taxonomy} onChange={e => handleCellUpdate(asset.id, 'taxonomy', e.target.value)} className="w-full mt-1 p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700/50 text-sm focus:ring-primary-500 focus:border-primary-500" />
                                     </div>
                                     <div className="text-right">
                                         <button onClick={() => handleDeleteAsset(asset.id)} className="inline-flex items-center px-3 py-1.5 text-sm text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/50 rounded-md hover:bg-red-200 dark:hover:bg-red-900">
