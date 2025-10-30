@@ -321,7 +321,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
     addToast({type: 'info', message: "CSV export initiated."})
   }
 
-  // --- Asset Selection Logic ---
+  // --- Asset Selection Logic (using pixels for accuracy) ---
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!selectionMode) return;
     const target = e.target as HTMLElement;
@@ -336,7 +336,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
     setSelectionStart({ x, y });
     setSelectionRect({
         pageIndex: parseInt(pageElement.dataset.pageIndex || '0', 10),
-        rect: { x: (x / rect.width) * 100, y: (y / rect.height) * 100, width: 0, height: 0 }
+        rect: { x, y, width: 0, height: 0 }
     });
   };
 
@@ -351,10 +351,10 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
     const currentY = e.clientY - rect.top;
     
     const newRect: BoundingBox = {
-        x: (Math.min(selectionStart.x, currentX) / rect.width) * 100,
-        y: (Math.min(selectionStart.y, currentY) / rect.height) * 100,
-        width: (Math.abs(currentX - selectionStart.x) / rect.width) * 100,
-        height: (Math.abs(currentY - selectionStart.y) / rect.height) * 100
+        x: Math.min(selectionStart.x, currentX),
+        y: Math.min(selectionStart.y, currentY),
+        width: Math.abs(currentX - selectionStart.x),
+        height: Math.abs(currentY - selectionStart.y)
     };
     setSelectionRect({ ...selectionRect, rect: newRect });
   };
@@ -366,26 +366,29 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
   
   const handleGenerateForSelection = async () => {
     if (!selectionRect || !pdfDoc || isGeneratingSelection) return;
-    const { pageIndex, rect: selectionBox } = selectionRect;
+    const { pageIndex, rect: pixelSelectionBox } = selectionRect;
     
     setIsGeneratingSelection(true);
 
     try {
         const page = await pdfDoc.getPage(pageIndex + 1);
+        const API_SCALE = 1.5; // Render at high-res for better analysis
+        const viewport = page.getViewport({ scale: API_SCALE });
+        
         const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
         const ctx = canvas.getContext('2d');
         if (!ctx) throw new Error("Could not get canvas context");
         
-        const viewport = page.getViewport({ scale: 1.5 });
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-
         await page.render({ canvasContext: ctx, viewport }).promise;
 
-        const sx = (selectionBox.x / 100) * canvas.width;
-        const sy = (selectionBox.y / 100) * canvas.height;
-        const sWidth = (selectionBox.width / 100) * canvas.width;
-        const sHeight = (selectionBox.height / 100) * canvas.height;
+        // Convert pixel selection from screen scale to API scale for cropping
+        const displayedPageDims = pageDimensions[pageIndex];
+        const sx = (pixelSelectionBox.x / displayedPageDims.width) * canvas.width;
+        const sy = (pixelSelectionBox.y / displayedPageDims.height) * canvas.height;
+        const sWidth = (pixelSelectionBox.width / displayedPageDims.width) * canvas.width;
+        const sHeight = (pixelSelectionBox.height / displayedPageDims.height) * canvas.height;
 
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = sWidth;
@@ -398,11 +401,19 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
         
         const newMetadata = await generateMetadataForSelection(imageDataUrl);
 
+        // Convert pixel selection to percentages for storage and display
+        const boundingBoxPercentages: BoundingBox = {
+            x: (pixelSelectionBox.x / displayedPageDims.width) * 100,
+            y: (pixelSelectionBox.y / displayedPageDims.height) * 100,
+            width: (pixelSelectionBox.width / displayedPageDims.width) * 100,
+            height: (pixelSelectionBox.height / displayedPageDims.height) * 100,
+        };
+
         const newAsset: ExtractedAsset = {
             ...newMetadata,
             id: crypto.randomUUID(),
             pageNumber: pageIndex + 1,
-            boundingBox: selectionBox,
+            boundingBox: boundingBoxPercentages,
         };
         
         setExtractedAssets(prev => sortAssets([...prev, newAsset]));
@@ -486,10 +497,10 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
                        <div
                           className="absolute pointer-events-none"
                           style={{
-                            top: `${selectionRect.rect.y}%`,
-                            left: `${selectionRect.rect.x}%`,
-                            width: `${selectionRect.rect.width}%`,
-                            height: `${selectionRect.rect.height}%`,
+                            top: `${selectionRect.rect.y}px`,
+                            left: `${selectionRect.rect.x}px`,
+                            width: `${selectionRect.rect.width}px`,
+                            height: `${selectionRect.rect.height}px`,
                           }}
                         >
                             <div className="w-full h-full bg-red-500/20 ring-2 ring-dashed ring-red-500"></div>
@@ -501,8 +512,8 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
               <div 
                 className="absolute p-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl flex items-center gap-2"
                 style={{
-                  top: `calc(${selectionRect.rect.y}% + ${selectionRect.rect.height}%)`,
-                  left: `${selectionRect.rect.x}%`,
+                  top: `calc(${selectionRect.rect.y}px + ${selectionRect.rect.height}px)`,
+                  left: `${selectionRect.rect.x}px`,
                   transform: `translateY(8px)`
                 }}
               >
