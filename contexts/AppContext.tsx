@@ -1,4 +1,4 @@
-import React, { createContext, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useState, ReactNode, useCallback, useMemo } from 'react';
 import { User, Role, UsageLog, ToastData } from '../types';
 import { USERS, USAGE_LOGS } from '../constants';
 
@@ -20,7 +20,6 @@ interface AppContextType {
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// FIX: Changed component to be a React.FC to potentially resolve typing issues with children prop.
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [users, setUsers] = useState<User[]>(USERS);
@@ -28,51 +27,51 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [usageLogs, setUsageLogs] = useState<UsageLog[]>(USAGE_LOGS);
   const [toasts, setToasts] = useState<ToastData[]>([]);
 
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
-  };
+  }, []);
 
   const addToast = useCallback((toast: Omit<ToastData, 'id'>) => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts(prev => [...prev, { id, ...toast }]);
   }, []);
 
-  const removeToast = (id: string) => {
+  const removeToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
-  };
+  }, []);
   
-  const addUser = (email: string, role: Role, tokenCap: number) => {
-    const newUser: User = {
-        id: Math.max(...users.map(u => u.id)) + 1,
-        email,
-        role,
-        tokenCap,
-        tokensUsed: 0,
-        lastLogin: new Date().toISOString(),
-        status: 'active'
-    };
-    setUsers(prev => [...prev, newUser]);
-    addToast({type: 'success', message: `User ${email} added successfully.`});
-  };
+  const addUser = useCallback((email: string, role: Role, tokenCap: number) => {
+    setUsers(prevUsers => {
+        const newUser: User = {
+            id: Math.max(0, ...prevUsers.map(u => u.id)) + 1,
+            email,
+            role,
+            tokenCap,
+            tokensUsed: 0,
+            lastLogin: new Date().toISOString(),
+            status: 'active'
+        };
+        addToast({type: 'success', message: `User ${email} added successfully.`});
+        return [...prevUsers, newUser];
+    });
+  }, [addToast]);
 
-  const deleteUser = (userId: number) => {
+  const deleteUser = useCallback((userId: number) => {
     if (userId === currentUser?.id) {
         addToast({type: 'error', message: "Cannot delete the currently logged-in user."});
         return;
     }
     setUsers(prev => prev.filter(u => u.id !== userId));
     addToast({type: 'info', message: `User with ID ${userId} deleted.`});
-  };
+  }, [currentUser, addToast]);
 
-  const updateUser = (updatedUser: User) => {
+  const updateUser = useCallback((updatedUser: User) => {
     setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-    if (updatedUser.id === currentUser?.id) {
-        setCurrentUser(updatedUser);
-    }
+    setCurrentUser(current => (current?.id === updatedUser.id ? updatedUser : current));
     addToast({type: 'success', message: `User ${updatedUser.email} updated.`});
-  };
+  }, [addToast]);
   
-  const addUsageLog = (log: Omit<UsageLog, 'id' | 'timestamp'>): { promptTokens: number, responseTokens: number } => {
+  const addUsageLog = useCallback((log: Omit<UsageLog, 'id' | 'timestamp'>): { promptTokens: number, responseTokens: number } => {
     // In a real app, tokens would come from the API response. Here we mock them.
     const promptTokens = Math.floor(Math.random() * 3000) + 500;
     const responseTokens = Math.floor(Math.random() * 2000) + 300;
@@ -85,18 +84,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       promptTokens,
       responseTokens
     };
+    
     setUsageLogs(prev => [newLog, ...prev]);
 
-    const user = users.find(u => u.id === log.userId);
-    if(user) {
-        const updatedUser = {...user, tokensUsed: user.tokensUsed + totalTokens};
-        updateUser(updatedUser);
-    }
+    const updateUserWithTokens = (user: User) => ({
+      ...user,
+      tokensUsed: user.tokensUsed + totalTokens,
+    });
+    
+    setUsers(prevUsers => prevUsers.map(u => (u.id === log.userId ? updateUserWithTokens(u) : u)));
+    
+    setCurrentUser(prevCurrentUser =>
+      prevCurrentUser?.id === log.userId ? updateUserWithTokens(prevCurrentUser) : prevCurrentUser
+    );
 
     return { promptTokens, responseTokens };
-  };
+  }, []);
 
-  const contextValue: AppContextType = {
+  const contextValue = useMemo(() => ({
     theme,
     toggleTheme,
     users,
@@ -110,7 +115,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     toasts,
     addToast,
     removeToast,
-  };
+  }), [
+    theme, users, currentUser, usageLogs, toasts,
+    toggleTheme, addUser, deleteUser, updateUser, addUsageLog, addToast, removeToast
+  ]);
 
   return (
     <AppContext.Provider value={contextValue}>

@@ -32,6 +32,13 @@ export enum AssetType {
     Graph = 'Graph'
 }
 
+export interface BoundingBox {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
 export interface ExtractedAsset {
     id: string;
     assetId: string;
@@ -41,6 +48,7 @@ export interface ExtractedAsset {
     altText: string;
     keywords: string[];
     taxonomy: string;
+    boundingBox?: BoundingBox;
 }
 
 export interface ToastData {
