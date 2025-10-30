@@ -1,22 +1,11 @@
-
 import React, { useState } from 'react';
 import { useAppContext } from '../hooks/useAppContext';
 import { User, Role } from '../types';
 import Modal from '../components/Modal';
 import { TrashIcon, PencilIcon } from '../components/icons/Icons';
 
-export default function AdminPanel() {
-  const { users, addUser, deleteUser, updateUser } = useAppContext();
-  const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
-  const [isEditUserModalOpen, setEditUserModalOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
-
-  const handleEditClick = (user: User) => {
-    setSelectedUser(user);
-    setEditUserModalOpen(true);
-  };
-  
-  const UserForm = ({ user, onSave, onCancel }: { user?: User | null, onSave: (data: any) => void, onCancel: () => void }) => {
+// Define UserForm outside the main component to prevent hook errors.
+const UserForm = ({ user, onSave, onCancel }: { user?: User | null, onSave: (data: any) => void, onCancel: () => void }) => {
     const [email, setEmail] = useState(user?.email || '');
     const [role, setRole] = useState(user?.role || Role.User);
     const [tokenCap, setTokenCap] = useState(user?.tokenCap || 50000);
@@ -49,6 +38,17 @@ export default function AdminPanel() {
             </div>
         </form>
     );
+};
+
+export default function AdminPanel() {
+  const { users, addUser, deleteUser, updateUser } = useAppContext();
+  const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
+  const [isEditUserModalOpen, setEditUserModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
+  const handleEditClick = (user: User) => {
+    setSelectedUser(user);
+    setEditUserModalOpen(true);
   };
   
   return (

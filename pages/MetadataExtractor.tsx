@@ -14,6 +14,78 @@ interface MetadataExtractorProps {
   onBack: () => void;
 }
 
+const LazyPdfPage = ({ pdfDoc, pageNum, scale, viewerRef }: { pdfDoc: pdfjsLib.PDFDocumentProxy; pageNum: number; scale: number; viewerRef: React.RefObject<HTMLDivElement> }) => {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const [isIntersecting, setIsIntersecting] = useState(false);
+    const [isRendered, setIsRendered] = useState(false);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting) {
+                    setIsIntersecting(true);
+                    observer.unobserve(entry.target);
+                }
+            },
+            { 
+                root: viewerRef.current,
+                rootMargin: "500px 0px" // Preload pages within 500px of the viewport
+            }
+        );
+
+        const currentContainer = containerRef.current;
+        if (currentContainer) {
+            observer.observe(currentContainer);
+        }
+
+        return () => {
+            if (currentContainer) {
+                observer.unobserve(currentContainer);
+            }
+        };
+    }, [viewerRef]);
+
+    useEffect(() => {
+        if (!isIntersecting || isRendered || scale <= 0) return;
+
+        let isCancelled = false;
+        
+        pdfDoc.getPage(pageNum).then(page => {
+            if (isCancelled || !canvasRef.current) return;
+
+            const viewport = page.getViewport({ scale });
+            const canvas = canvasRef.current;
+            const context = canvas.getContext('2d');
+            if (!context) return;
+            
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            page.render({ canvasContext: context, viewport }).promise.then(() => {
+                if (!isCancelled) {
+                    setIsRendered(true);
+                }
+            });
+        });
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [isIntersecting, isRendered, pdfDoc, pageNum, scale]);
+
+    return (
+        <div ref={containerRef} className="absolute inset-0">
+            {isIntersecting && <canvas ref={canvasRef} className={isRendered ? 'block' : 'hidden'} />}
+            {isIntersecting && !isRendered && (
+                <div className="w-full h-full flex items-center justify-center bg-gray-300 dark:bg-gray-600">
+                    <Spinner size="md" />
+                </div>
+            )}
+        </div>
+    );
+};
+
 export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
   const { currentUser, addUsageLog, addToast } = useAppContext();
   const [file, setFile] = useState<File | null>(null);
@@ -24,6 +96,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
   
   // PDF Viewer State
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
+  const [pdfScale, setPdfScale] = useState(1.0);
   const [pageDimensions, setPageDimensions] = useState<{ width: number; height: number; }[]>([]);
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
   
@@ -33,7 +106,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
   const [selectionRect, setSelectionRect] = useState<{ pageIndex: number; rect: BoundingBox; } | null>(null);
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number; } | null>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
-
+  const resizeTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const selectedFile = acceptedFiles[0];
@@ -52,6 +125,48 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
     multiple: false
   });
 
+  const updatePdfDimensions = useCallback(async (pdf: pdfjsLib.PDFDocumentProxy) => {
+    if (!viewerRef.current) return;
+    const container = viewerRef.current;
+    
+    // Give browser a moment to render to get correct width
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const style = window.getComputedStyle(container);
+    const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+    const availableWidth = container.clientWidth - paddingX;
+    
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 1 });
+    const newScale = availableWidth / viewport.width;
+    setPdfScale(newScale);
+
+    const dimensions = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+        const p = await pdf.getPage(i);
+        const vp = p.getViewport({ scale: newScale });
+        dimensions.push({ width: vp.width, height: vp.height });
+    }
+    setPageDimensions(dimensions);
+  }, []);
+
+  useEffect(() => {
+    if (!pdfDoc) return;
+    
+    const handleResize = () => {
+      if (resizeTimer.current) clearTimeout(resizeTimer.current);
+      resizeTimer.current = setTimeout(() => {
+        updatePdfDimensions(pdfDoc);
+      }, 200);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (resizeTimer.current) clearTimeout(resizeTimer.current);
+    };
+  }, [pdfDoc, updatePdfDimensions]);
+  
   useEffect(() => {
     if (selectedAssetId) {
         const asset = extractedAssets.find(a => a.id === selectedAssetId);
@@ -78,7 +193,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
 
     setStatus('loading');
     setStatusMessage('Loading PDF document...');
-    setExtractedAssets([]); // Clear previous results
+    setExtractedAssets([]);
     
     try {
         const fileBuffer = await file.arrayBuffer();
@@ -86,25 +201,18 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
         const pdf = await loadingTask.promise;
         setPdfDoc(pdf);
 
-        // Pre-calculate all page dimensions for the viewer
-        const dimensions = [];
-        for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const viewport = page.getViewport({ scale: 1.5 });
-            dimensions.push({ width: viewport.width, height: viewport.height });
-        }
-        setPageDimensions(dimensions);
+        await updatePdfDimensions(pdf);
         pageRefs.current = Array(pdf.numPages).fill(null);
         
         setStatus('extracting');
         const allAssets: ExtractedAsset[] = [];
+        const API_SCALE = 1.5; // Use a fixed, high-res scale for API calls
 
-        // Process page by page
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             setStatusMessage(`Analyzing page ${pageNum} of ${pdf.numPages}...`);
             
             const page = await pdf.getPage(pageNum);
-            const viewport = page.getViewport({ scale: 1.5 }); // Use same scale as dimensions
+            const viewport = page.getViewport({ scale: API_SCALE });
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
             if (!context) continue;
@@ -124,7 +232,6 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
                     pageNumber: pageNum,
                 }));
                 allAssets.push(...newAssetsWithContext);
-                // Update state incrementally to show results as they come in
                 setExtractedAssets([...allAssets]); 
             }
         }
@@ -147,7 +254,6 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
         addToast({ type: 'error', message: errorMessage });
     }
   };
-
 
   const handleRegenerate = async (assetId: string) => {
     addToast({type: 'info', message: `Regenerating metadata for ${assetId}...`})
@@ -303,78 +409,6 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
     }
   };
 
-  const LazyPdfPage = React.memo(({ pdfDoc, pageNum }: { pdfDoc: pdfjsLib.PDFDocumentProxy; pageNum: number }) => {
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const containerRef = useRef<HTMLDivElement | null>(null);
-    const [isIntersecting, setIsIntersecting] = useState(false);
-    const [isRendered, setIsRendered] = useState(false);
-
-    useEffect(() => {
-        const observer = new IntersectionObserver(
-            ([entry]) => {
-                if (entry.isIntersecting) {
-                    setIsIntersecting(true);
-                    observer.unobserve(entry.target);
-                }
-            },
-            { 
-                root: viewerRef.current,
-                rootMargin: "500px 0px" // Preload pages within 500px of the viewport
-            }
-        );
-
-        const currentContainer = containerRef.current;
-        if (currentContainer) {
-            observer.observe(currentContainer);
-        }
-
-        return () => {
-            if (currentContainer) {
-                observer.unobserve(currentContainer);
-            }
-        };
-    }, []);
-
-    useEffect(() => {
-        if (!isIntersecting || isRendered) return;
-
-        let isCancelled = false;
-        
-        pdfDoc.getPage(pageNum).then(page => {
-            if (isCancelled || !canvasRef.current) return;
-
-            const viewport = page.getViewport({ scale: 1.5 });
-            const canvas = canvasRef.current;
-            const context = canvas.getContext('2d');
-            if (!context) return;
-            
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-
-            page.render({ canvasContext: context, viewport }).promise.then(() => {
-                if (!isCancelled) {
-                    setIsRendered(true);
-                }
-            });
-        });
-
-        return () => {
-            isCancelled = true;
-        };
-    }, [isIntersecting, isRendered, pdfDoc, pageNum]);
-
-    return (
-        <div ref={containerRef} className="absolute inset-0">
-            {isIntersecting && <canvas ref={canvasRef} className={isRendered ? 'block' : 'hidden'} />}
-            {isIntersecting && !isRendered && (
-                <div className="w-full h-full flex items-center justify-center bg-gray-300 dark:bg-gray-600">
-                    <Spinner size="md" />
-                </div>
-            )}
-        </div>
-    );
-  });
-
   // --- Render Functions ---
   const renderInputArea = () => (
     <div className="max-w-3xl mx-auto">
@@ -419,10 +453,10 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
                     key={`page_${index + 1}`} 
                     ref={el => pageRefs.current[index] = el}
                     data-page-index={index}
-                    className="relative shadow-lg mb-4 bg-white dark:bg-gray-800 pdf-page-container"
+                    className="relative shadow-lg mb-4 bg-white dark:bg-gray-800 mx-auto pdf-page-container"
                     style={{ width: dim.width, height: dim.height }}
                 >
-                    <LazyPdfPage pdfDoc={pdfDoc} pageNum={index + 1} />
+                    <LazyPdfPage pdfDoc={pdfDoc} pageNum={index + 1} scale={pdfScale} viewerRef={viewerRef} />
                     {/* Highlight selected asset */}
                     {extractedAssets.filter(a => a.pageNumber === index + 1 && a.id === selectedAssetId && a.boundingBox).map(asset => (
                         <div

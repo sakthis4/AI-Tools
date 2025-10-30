@@ -10,6 +10,28 @@ interface SidebarProps {
   setActiveView: (view: View) => void;
 }
 
+// Moved NavLink outside the main component for performance and best practices.
+const NavLink: React.FC<{ 
+  id: View, 
+  label: string, 
+  icon: React.ElementType, 
+  isCollapsed: boolean, 
+  isActive: boolean, 
+  onClick: () => void 
+}> = ({ id, label, icon: Icon, isCollapsed, isActive, onClick }) => (
+    <button
+      onClick={onClick}
+      className={`flex items-center w-full px-4 py-3 text-sm font-medium rounded-lg transition-colors duration-200 ${
+        isActive
+          ? 'bg-primary-500 text-white'
+          : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+      } ${isCollapsed ? 'justify-center' : ''}`}
+    >
+      <Icon className="h-5 w-5" />
+      {!isCollapsed && <span className="ml-3">{label}</span>}
+    </button>
+  );
+
 export default function Sidebar({ activeView, setActiveView }: SidebarProps) {
   const { currentUser } = useAppContext();
   const [isHelpOpen, setHelpOpen] = useState(false);
@@ -22,24 +44,6 @@ export default function Sidebar({ activeView, setActiveView }: SidebarProps) {
     { id: 'admin', label: 'Admin Panel', icon: AdminIcon, visible: currentUser?.role === 'Admin' },
   ];
 
-  // FIX: Explicitly type NavLink as React.FC to resolve issues with the 'key' prop in loops.
-  const NavLink: React.FC<{ id: View, label: string, icon: React.ElementType, isCollapsed: boolean }> = ({ id, label, icon: Icon, isCollapsed }) => (
-    <button
-      onClick={() => {
-        setActiveView(id);
-        setMobileMenuOpen(false);
-      }}
-      className={`flex items-center w-full px-4 py-3 text-sm font-medium rounded-lg transition-colors duration-200 ${
-        activeView === id
-          ? 'bg-primary-500 text-white'
-          : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-      } ${isCollapsed ? 'justify-center' : ''}`}
-    >
-      <Icon className="h-5 w-5" />
-      {!isCollapsed && <span className="ml-3">{label}</span>}
-    </button>
-  );
-
   const sidebarContent = (
     <>
       <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-4 py-5`}>
@@ -47,7 +51,18 @@ export default function Sidebar({ activeView, setActiveView }: SidebarProps) {
       </div>
       <nav className="flex-1 px-2 space-y-2">
         {navItems.filter(item => item.visible).map(item => (
-          <NavLink key={item.id} id={item.id as View} label={item.label} icon={item.icon} isCollapsed={isCollapsed} />
+          <NavLink 
+            key={item.id} 
+            id={item.id as View} 
+            label={item.label} 
+            icon={item.icon} 
+            isCollapsed={isCollapsed}
+            isActive={activeView === item.id}
+            onClick={() => {
+                setActiveView(item.id as View);
+                setMobileMenuOpen(false);
+            }} 
+          />
         ))}
       </nav>
       <div className="px-2 pb-4">
