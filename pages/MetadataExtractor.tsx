@@ -4,10 +4,10 @@ import { ExtractedAsset, BoundingBox } from '../types';
 import { useAppContext } from '../hooks/useAppContext';
 import { extractAssetsFromPage, generateMetadataForSelection } from '../services/geminiService';
 import Spinner from '../components/Spinner';
-import { UploadIcon, ChevronLeftIcon, SparklesIcon, DownloadIcon, TrashIcon, ChevronDownIcon, XIcon, CursorClickIcon } from '../components/icons/Icons';
+import { UploadIcon, ChevronLeftIcon, SparklesIcon, DownloadIcon, TrashIcon, ChevronDownIcon, XIcon, CursorClickIcon, ExclamationIcon } from '../components/icons/Icons';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Set up the PDF.js worker
+// The main library is loaded as a module via importmap, so the worker must also be a module.
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`;
 
 interface MetadataExtractorProps {
@@ -74,7 +74,8 @@ const LazyPdfPage = ({ pdfDoc, pageNum, scale, viewerRef }: { pdfDoc: pdfjsLib.P
             canvas.height = viewport.height;
             canvas.width = viewport.width;
 
-            page.render({ canvasContext: context, viewport }).promise.then(() => {
+            // Fix: The type definition for 'RenderParameters' requires the 'canvas' property.
+            page.render({ canvasContext: context, viewport, canvas }).promise.then(() => {
                 if (!isCancelled) {
                     setIsRendered(true);
                 }
@@ -108,7 +109,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
   
   // PDF Viewer State
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
-  const [pdfScale, setPdfScale] = useState(1.0);
+  const [pdfScale, setPdfScale] = useState(0);
   const [pageDimensions, setPageDimensions] = useState<{ width: number; height: number; }[]>([]);
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
   
@@ -122,6 +123,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
   const resizeTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
+    if (!acceptedFiles || acceptedFiles.length === 0) return;
     const selectedFile = acceptedFiles[0];
     if (selectedFile.size > 100 * 1024 * 1024) {
       addToast({ type: 'error', message: 'File size cannot exceed 100MB.' });
@@ -142,12 +144,15 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
     if (!viewerRef.current) return;
     const container = viewerRef.current;
     
+    // Defer execution to allow the DOM to update after a state change.
     await new Promise(resolve => setTimeout(resolve, 0));
 
     const style = window.getComputedStyle(container);
     const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
     const availableWidth = container.clientWidth - paddingX;
     
+    if (availableWidth <= 0) return; // Don't calculate if container has no width
+
     const page = await pdf.getPage(1);
     const viewport = page.getViewport({ scale: 1 });
     const newScale = availableWidth / viewport.width;
@@ -162,6 +167,14 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
     setPageDimensions(dimensions);
   }, []);
 
+  // Effect to calculate PDF dimensions when the results view is first shown.
+  useEffect(() => {
+    if (status === 'done' && pdfDoc) {
+      updatePdfDimensions(pdfDoc);
+    }
+  }, [status, pdfDoc, updatePdfDimensions]);
+
+  // Effect to handle window resizing for the PDF viewer.
   useEffect(() => {
     if (!pdfDoc) return;
     
@@ -179,6 +192,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
     };
   }, [pdfDoc, updatePdfDimensions]);
   
+  // Effect to scroll to the selected asset.
   useEffect(() => {
     if (selectedAssetId) {
         const asset = extractedAssets.find(a => a.id === selectedAssetId);
@@ -213,7 +227,6 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
         const pdf = await loadingTask.promise;
         setPdfDoc(pdf);
 
-        await updatePdfDimensions(pdf);
         pageRefs.current = Array(pdf.numPages).fill(null);
         
         setStatus('extracting');
@@ -232,7 +245,8 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
             canvas.height = viewport.height;
             canvas.width = viewport.width;
 
-            await page.render({ canvasContext: context, viewport }).promise;
+            // Fix: The type definition for 'RenderParameters' requires the 'canvas' property.
+            await page.render({ canvasContext: context, viewport, canvas }).promise;
             const pageImageBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 
             const assetsOnPage = await extractAssetsFromPage(pageImageBase64);
@@ -240,6 +254,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
             if (assetsOnPage.length > 0) {
                 const newAssetsWithContext = assetsOnPage.map(asset => ({
                     ...asset,
+                    // Fix: Use crypto.randomUUID for a more robust unique identifier.
                     id: crypto.randomUUID(),
                     pageNumber: pageNum,
                 }));
@@ -251,9 +266,13 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
         setStatus('done');
         setStatusMessage('');
 
+        // FIX: The 'addUsageLog' function signature requires 'promptTokens' and 'responseTokens'.
+        // Passing dummy values of 0 as they are generated and overwritten within the function.
         const { promptTokens, responseTokens } = addUsageLog({ 
             userId: currentUser.id, 
             toolName: 'Metadata Extractor',
+            promptTokens: 0,
+            responseTokens: 0,
         });
         const totalTokens = promptTokens + responseTokens;
         addToast({ type: 'success', message: `Extraction complete! ${allAssets.length} assets found. ${totalTokens.toLocaleString()} tokens used.` });
@@ -381,7 +400,8 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
         const ctx = canvas.getContext('2d');
         if (!ctx) throw new Error("Could not get canvas context");
         
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        // Fix: The type definition for 'RenderParameters' requires the 'canvas' property.
+        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
 
         // Convert pixel selection from screen scale to API scale for cropping
         const displayedPageDims = pageDimensions[pageIndex];
@@ -411,6 +431,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
 
         const newAsset: ExtractedAsset = {
             ...newMetadata,
+            // Fix: Use crypto.randomUUID for a more robust unique identifier.
             id: crypto.randomUUID(),
             pageNumber: pageIndex + 1,
             boundingBox: boundingBoxPercentages,
@@ -431,7 +452,8 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
 
   // --- Render Functions ---
   const renderInputArea = () => (
-    <div className="max-w-3xl mx-auto">
+    <div className="h-full flex flex-col justify-center">
+      <div className="max-w-3xl mx-auto w-full">
         <div {...getRootProps()} className={`p-10 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors ${isDragActive ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-300 dark:border-gray-600 hover:border-primary-400'}`}>
             <input {...getInputProps()} />
             <UploadIcon className="h-12 w-12 mx-auto text-gray-400" />
@@ -449,12 +471,33 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
         >
             Extract Metadata
         </button>
+      </div>
     </div>
   );
 
   const renderProcessingArea = () => (
-    <div className="flex flex-col items-center justify-center h-64">
+    <div className="flex flex-col items-center justify-center h-full">
         <Spinner text={statusMessage} size="lg"/>
+    </div>
+  );
+  
+  const renderErrorArea = () => (
+    <div className="flex flex-col items-center justify-center h-full text-center p-4">
+        <div className="bg-red-100 dark:bg-red-900/30 p-8 rounded-lg max-w-md w-full">
+            <ExclamationIcon className="h-12 w-12 mx-auto text-red-500" />
+            <p className="mt-4 text-lg font-semibold text-red-700 dark:text-red-300">Extraction Failed</p>
+            <p className="mt-2 text-red-600 dark:text-red-400 text-sm">{statusMessage}</p>
+            <button 
+                onClick={() => {
+                    setFile(null);
+                    setStatus('idle');
+                    setStatusMessage('');
+                }} 
+                className="mt-6 px-5 py-2.5 bg-primary-500 text-white font-semibold rounded-lg hover:bg-primary-600 transition-colors"
+            >
+                Try Again
+            </button>
+        </div>
     </div>
   );
 
@@ -468,10 +511,11 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
         >
-            {pdfDoc && pageDimensions.map((dim, index) => (
+            {pdfDoc && pageDimensions.length > 0 && pageDimensions.map((dim, index) => (
                 <div 
                     key={`page_${index + 1}`} 
-                    ref={el => pageRefs.current[index] = el}
+                    // FIX: A ref callback should not return a value. Wrapped assignment in curly braces to ensure a void return.
+                    ref={el => { pageRefs.current[index] = el; }}
                     data-page-index={index}
                     className="relative shadow-lg mb-4 bg-white dark:bg-gray-800 mx-auto pdf-page-container"
                     style={{ width: dim.width, height: dim.height }}
@@ -625,7 +669,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
   );
 
   return (
-    <div className="animate-fade-in h-full flex flex-col">
+    <div className="animate-fade-in h-full flex flex-col p-4 md:p-6 lg:p-8 bg-gray-100 dark:bg-gray-900">
       <div className="flex items-center mb-6 flex-shrink-0">
         <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 mr-3">
           <ChevronLeftIcon className="h-5 w-5" />
@@ -637,7 +681,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
         {status === 'idle' && renderInputArea()}
         {(status === 'loading' || status === 'extracting') && renderProcessingArea()}
         {status === 'done' && renderResultsArea()}
-        {status === 'error' && <div className="text-center text-red-500">{statusMessage} <button onClick={() => setStatus('idle')} className="text-primary-500 hover:underline">Try Again</button></div>}
+        {status === 'error' && renderErrorArea()}
       </div>
     </div>
   );

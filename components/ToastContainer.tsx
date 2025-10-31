@@ -1,3 +1,4 @@
+
 import React, { useEffect } from 'react';
 import { useAppContext } from '../hooks/useAppContext';
 import { CheckIcon, ExclamationIcon, InfoIcon, XIcon } from './icons/Icons';
@@ -28,7 +29,7 @@ const Toast: React.FC<ToastProps> = ({ id, type, message, onDismiss }) => {
   }, [id, onDismiss]);
 
   return (
-    <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden w-full max-w-sm">
+    <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden w-full max-w-lg">
       <div className="p-4">
         <div className="flex items-start">
           <div className="flex-shrink-0">{icons[type]}</div>
@@ -54,7 +55,7 @@ export default function ToastContainer() {
   const { toasts, removeToast } = useAppContext();
 
   return (
-    <div className="fixed inset-0 flex items-end justify-center px-4 py-6 pointer-events-none sm:p-6 sm:items-end sm:justify-end z-50">
+    <div className="fixed inset-0 flex items-start justify-center px-4 py-6 pointer-events-none sm:p-6 sm:items-start sm:justify-end z-50">
       <div className="flex flex-col items-center space-y-4 sm:items-end">
         {toasts.map(toast => (
           <Toast

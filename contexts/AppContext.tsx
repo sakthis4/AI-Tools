@@ -33,7 +33,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const addToast = useCallback((toast: Omit<ToastData, 'id'>) => {
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts(prev => [...prev, { id, ...toast }]);
+    setToasts(prev => [{ id, ...toast }, ...prev]);
   }, []);
 
   const removeToast = useCallback((id: string) => {

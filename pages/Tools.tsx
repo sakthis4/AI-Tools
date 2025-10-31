@@ -6,7 +6,16 @@ export default function Tools() {
   const [isExtractorLaunched, setExtractorLaunched] = useState(false);
 
   if (isExtractorLaunched) {
-    return <MetadataExtractor onBack={() => setExtractorLaunched(false)} />;
+    // The main container has padding. This div uses negative margins to expand
+    // into that padding space, creating a "full screen" effect within the main content area.
+    // The height needs to be adjusted to account for the vertical padding that is being overcome.
+    // p-4 = 1rem, p-6 = 1.5rem, p-8 = 2rem.
+    // Padding is on top and bottom, so we add 2rem, 3rem, and 4rem respectively.
+    return (
+      <div className="-m-4 md:-m-6 lg:-m-8 h-[calc(100%+2rem)] md:h-[calc(100%+3rem)] lg:h-[calc(100%+4rem)]">
+        <MetadataExtractor onBack={() => setExtractorLaunched(false)} />
+      </div>
+    );
   }
 
   return (

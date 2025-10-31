@@ -28,7 +28,7 @@ const PAGE_METADATA_SCHEMA = {
       },
       taxonomy: {
         type: Type.STRING,
-        description: 'A hierarchical classification for the asset, e.g., "Graph -> Time-series".',
+        description: 'A hierarchical classification for the asset, following the IPTC Media Topics standard. For example: "sport > association football (soccer)".',
       },
       boundingBox: {
         type: Type.OBJECT,
@@ -71,7 +71,7 @@ const SINGLE_ASSET_SCHEMA = {
     },
     taxonomy: {
       type: Type.STRING,
-      description: 'A hierarchical classification for the asset, e.g., "Graph -> Time-series", "Image -> Photographic".',
+      description: 'A hierarchical classification for the asset, following the IPTC Media Topics standard. For example: "sport > association football (soccer)".',
     },
   },
   required: ['assetId', 'assetType', 'preview', 'altText', 'keywords', 'taxonomy'],
@@ -113,7 +113,7 @@ export async function extractAssetsFromPage(pageImageBase64: string): Promise<Om
     
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const imagePart = { inlineData: { data: pageImageBase64, mimeType: 'image/jpeg' } };
-    const textPart = { text: "Analyze the provided image, which is a single page from a document. Find ALL assets (figures, tables, images, equations, maps, and graphs) on this page. For each asset, extract its metadata according to the schema. If no assets are found, return an empty array." };
+    const textPart = { text: "Analyze the provided image, which is a single page from a document. Find ALL assets (figures, tables, images, equations, maps, and graphs) on this page. For each asset, extract its metadata according to the schema. For the taxonomy field, use the IPTC Media Topics standard to create a hierarchical classification. If no assets are found, return an empty array." };
 
     try {
         const response = await ai.models.generateContent({
@@ -150,7 +150,7 @@ export async function generateMetadataForSelection(imageDataUrl: string): Promis
   };
   
   const textPart = {
-    text: 'Analyze the provided image, which is a cropped asset from a document. Generate metadata for it according to the schema.'
+    text: 'Analyze the provided image, which is a cropped asset from a document. Generate metadata for it according to the schema. For the taxonomy field, use the IPTC Media Topics standard to create a hierarchical classification.'
   };
 
   const response = await ai.models.generateContent({
