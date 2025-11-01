@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { ExtractedAsset, BoundingBox } from '../types';
@@ -521,21 +522,6 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
                     style={{ width: dim.width, height: dim.height }}
                 >
                     <LazyPdfPage pdfDoc={pdfDoc} pageNum={index + 1} scale={pdfScale} viewerRef={viewerRef} />
-                    {/* Highlight selected asset */}
-                    {extractedAssets.filter(a => a.pageNumber === index + 1 && a.id === selectedAssetId && a.boundingBox).map(asset => (
-                        <div
-                          key={`highlight-${asset.id}`}
-                          className="absolute pointer-events-none"
-                          style={{
-                            top: `${asset.boundingBox!.y}%`,
-                            left: `${asset.boundingBox!.x}%`,
-                            width: `${asset.boundingBox!.width}%`,
-                            height: `${asset.boundingBox!.height}%`,
-                          }}
-                        >
-                            <div className="w-full h-full bg-primary-500/30 ring-2 ring-primary-500 rounded-sm"></div>
-                        </div>
-                    ))}
                     {/* Show current selection rectangle */}
                     {selectionRect && selectionRect.pageIndex === index && (
                        <div
