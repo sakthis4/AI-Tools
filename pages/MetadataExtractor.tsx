@@ -3,7 +3,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { ExtractedAsset, BoundingBox } from '../types';
 import { useAppContext } from '../hooks/useAppContext';
-import { extractAssetsFromPage, generateMetadataForSelection } from '../services/geminiService';
+import { extractAssetsFromPage, generateMetadataForCroppedImage } from '../services/geminiService';
 import Spinner from '../components/Spinner';
 import { UploadIcon, ChevronLeftIcon, SparklesIcon, DownloadIcon, TrashIcon, ChevronDownIcon, XIcon, CursorClickIcon, ExclamationIcon } from '../components/icons/Icons';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -18,7 +18,7 @@ interface MetadataExtractorProps {
 const sortAssets = (assets: ExtractedAsset[]): ExtractedAsset[] => {
     return assets.sort((a, b) => {
         if (a.pageNumber !== b.pageNumber) {
-            return a.pageNumber - b.pageNumber;
+            return (a.pageNumber ?? 0) - (b.pageNumber ?? 0);
         }
         if (a.boundingBox && b.boundingBox) {
             return a.boundingBox.y - b.boundingBox.y;
@@ -197,7 +197,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
   useEffect(() => {
     if (selectedAssetId) {
         const asset = extractedAssets.find(a => a.id === selectedAssetId);
-        if (asset) {
+        if (asset && asset.pageNumber) {
             const pageElement = pageRefs.current[asset.pageNumber - 1];
             pageElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
@@ -420,7 +420,7 @@ export default function MetadataExtractor({ onBack }: MetadataExtractorProps) {
         
         const imageDataUrl = tempCanvas.toDataURL('image/png');
         
-        const newMetadata = await generateMetadataForSelection(imageDataUrl);
+        const newMetadata = await generateMetadataForCroppedImage(imageDataUrl);
 
         // Convert pixel selection to percentages for storage and display
         const boundingBoxPercentages: BoundingBox = {

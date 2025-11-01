@@ -134,7 +134,7 @@ export async function extractAssetsFromPage(pageImageBase64: string): Promise<Om
 }
 
 
-export async function generateMetadataForSelection(imageDataUrl: string): Promise<Omit<ExtractedAsset, 'id' | 'pageNumber' | 'boundingBox'>> {
+export async function generateMetadataForCroppedImage(imageDataUrl: string): Promise<Omit<ExtractedAsset, 'id' | 'pageNumber' | 'boundingBox'>> {
   if (!process.env.API_KEY) {
     throw new Error("API_KEY not set.");
   }
@@ -164,4 +164,41 @@ export async function generateMetadataForSelection(imageDataUrl: string): Promis
 
   const jsonText = response.text.trim();
   return JSON.parse(jsonText);
+}
+
+export async function generateMetadataForImage(imageBase64: string, mimeType: string): Promise<Omit<ExtractedAsset, 'id' | 'pageNumber' | 'boundingBox'>> {
+    if (!process.env.API_KEY) {
+        console.warn("API_KEY environment variable not set. Returning mock data.");
+        return new Promise(resolve => setTimeout(() => {
+            resolve({
+                assetId: `Mock Image ${Math.floor(Math.random() * 100)}`,
+                assetType: AssetType.Image,
+                preview: "A mock image generated for demonstration.",
+                altText: "This is a longer mock alternative text for an image.",
+                keywords: ["mock", "demo", "image"],
+                taxonomy: "Mock -> Image",
+            });
+        }, 800 + Math.random() * 500));
+    }
+    
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const imagePart = { inlineData: { data: imageBase64, mimeType: mimeType } };
+    const textPart = { text: "Analyze the provided image. Generate all metadata fields according to the schema. For the assetId, create a short descriptive ID based on the image content. For the taxonomy field, use the IPTC Media Topics standard to create a hierarchical classification." };
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [{ parts: [imagePart, textPart] }],
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: SINGLE_ASSET_SCHEMA,
+            },
+        });
+        
+        const jsonText = response.text.trim();
+        return JSON.parse(jsonText);
+    } catch (error) {
+        console.error("Error calling Gemini API for image processing:", error);
+        throw new Error("Failed to process image with Gemini API.");
+    }
 }

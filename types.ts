@@ -43,7 +43,7 @@ export interface ExtractedAsset {
     id: string;
     assetId: string;
     assetType: AssetType;
-    pageNumber: number;
+    pageNumber?: number;
     preview: string;
     altText: string;
     keywords: string[];
