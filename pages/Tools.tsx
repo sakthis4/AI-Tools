@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import MetadataExtractor from './MetadataExtractor';
 import ImageMetadataExtractor from './ImageMetadataExtractor';
-import { SparklesIcon, PhotographIcon } from '../components/icons/Icons';
+import ComplianceChecker from './ComplianceChecker';
+import { SparklesIcon, PhotographIcon, ComplianceIcon } from '../components/icons/Icons';
 
 export default function Tools() {
-  const [activeTool, setActiveTool] = useState<'pdf' | 'image' | null>(null);
+  const [activeTool, setActiveTool] = useState<'pdf' | 'image' | 'compliance' | null>(null);
 
   if (activeTool === 'pdf') {
     // The main container has padding. This div uses negative margins to expand
@@ -27,6 +28,14 @@ export default function Tools() {
     );
   }
 
+  if (activeTool === 'compliance') {
+    return (
+      <div className="-m-4 md:-m-6 lg:-m-8 h-[calc(100%+2rem)] md:h-[calc(100%+3rem)] lg:h-[calc(100%+4rem)]">
+        <ComplianceChecker onBack={() => setActiveTool(null)} />
+      </div>
+    );
+  }
+  
   return (
     <div className="animate-fade-in">
       <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Tools</h2>
@@ -69,7 +78,25 @@ export default function Tools() {
             Launch Tool
           </button>
         </div>
-        {/* Future tools can be added here as other cards */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 flex flex-col justify-between hover:shadow-xl transition-shadow duration-300">
+          <div>
+            <div className="flex items-center mb-4">
+              <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-full mr-3">
+                <ComplianceIcon className="h-6 w-6 text-purple-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Compliance Checker</h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
+              Run pre-submission checks for plagiarism, image integrity, reference formatting, and journal guideline compliance.
+            </p>
+          </div>
+          <button
+            onClick={() => setActiveTool('compliance')}
+            className="w-full bg-purple-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-purple-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors duration-300"
+          >
+            Launch Tool
+          </button>
+        </div>
       </div>
     </div>
   );

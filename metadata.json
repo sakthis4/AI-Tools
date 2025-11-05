@@ -1,5 +1,5 @@
 {
-  "name": "AI Tools Interface",
+  "name": "S4Carlisle AI Initiatives for Publishing Domain",
   "description": "A prototype for a publisher-grade workflow application with AI tools, user and token management, and a metadata extraction feature powered by the Gemini API.",
   "requestFramePermissions": []
 }

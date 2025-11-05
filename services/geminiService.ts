@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from '@google/genai';
-import { ExtractedAsset, AssetType } from '../types';
+import { ExtractedAsset, AssetType, ComplianceFinding } from '../types';
 
 // Schema for assets found on a single page
 const PAGE_METADATA_SCHEMA = {
@@ -75,6 +75,25 @@ const SINGLE_ASSET_SCHEMA = {
     },
   },
   required: ['assetId', 'assetType', 'preview', 'altText', 'keywords', 'taxonomy'],
+};
+
+
+const IFA_COMPLIANCE_SCHEMA = {
+    type: Type.ARRAY,
+    items: {
+        type: Type.OBJECT,
+        properties: {
+            checkCategory: { type: Type.STRING, description: 'The category of the compliance check, e.g., "Title Format", "Author Affiliations", "Funding Statement", "Conflict of Interest Disclosure".' },
+            status: { type: Type.STRING, enum: ['pass', 'fail', 'warn'], description: 'The compliance status for this specific check. Use "pass" if compliant, "fail" for clear violations, and "warn" for ambiguities or potential issues.' },
+            summary: { type: Type.STRING, description: 'A concise one-sentence summary of the finding.' },
+            manuscriptQuote: { type: Type.STRING, description: 'The exact, brief quote from the manuscript that is relevant to the finding. If no specific quote applies (e.g., something is missing), state that clearly.' },
+            manuscriptPage: { type: Type.NUMBER, description: 'The page number in the manuscript where the quote is found or where the issue occurs.' },
+            ifaRule: { type: Type.STRING, description: 'The exact rule or guideline quoted from the IFA document that is being checked against.' },
+            ifaPage: { type: Type.NUMBER, description: 'The page number in the IFA document where the rule is found.' },
+            recommendation: { type: Type.STRING, description: 'A detailed, actionable recommendation on how to address the issue to become compliant.' }
+        },
+        required: ['checkCategory', 'status', 'summary', 'manuscriptQuote', 'manuscriptPage', 'ifaRule', 'ifaPage', 'recommendation']
+    }
 };
 
 /**
@@ -200,5 +219,80 @@ export async function generateMetadataForImage(imageBase64: string, mimeType: st
     } catch (error) {
         console.error("Error calling Gemini API for image processing:", error);
         throw new Error("Failed to process image with Gemini API.");
+    }
+}
+
+export async function performComplianceCheck(manuscriptText: string, ifaText: string): Promise<ComplianceFinding[]> {
+    if (!process.env.API_KEY) {
+        console.warn("API_KEY environment variable not set. Returning mock compliance data.");
+        return new Promise(resolve => setTimeout(() => resolve([
+            {
+                checkCategory: 'Title Word Count',
+                status: 'fail',
+                summary: 'Title exceeds the 15-word limit.',
+                manuscriptQuote: 'A Comprehensive and In-Depth Analysis of the Molecular Mechanisms Underlying Cellular Senescence and Its Implications for Age-Related Pathologies',
+                manuscriptPage: 1,
+                ifaRule: 'The title should be concise and no more than 15 words in length.',
+                ifaPage: 2,
+                recommendation: 'Revise the manuscript title to be 15 words or fewer to comply with journal guidelines.'
+            },
+            {
+                checkCategory: 'Author Affiliations',
+                status: 'warn',
+                summary: 'Affiliation for one author may be incomplete.',
+                manuscriptQuote: 'Chen, L., BioGen Inc., London',
+                manuscriptPage: 1,
+                ifaRule: 'Author affiliations must include Department, Institution, City, and Country.',
+                ifaPage: 3,
+                recommendation: 'Review the affiliation for "Chen, L." and add the missing Department and Country information to ensure it is fully compliant.'
+            },
+            {
+                checkCategory: 'Data Availability Statement',
+                status: 'pass',
+                summary: 'Statement is present and compliant.',
+                manuscriptQuote: 'All data generated or analysed during this study are included in this published article.',
+                manuscriptPage: 12,
+                ifaRule: 'A data availability statement is required for all submissions.',
+                ifaPage: 6,
+                recommendation: 'No action needed. The data availability statement is compliant.'
+            }
+        ]), 3000));
+    }
+
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const prompt = `
+        You are a meticulous compliance editor for a scientific journal. Your task is to compare the provided 'MANUSCRIPT' against the journal's 'INSTRUCTIONS FOR AUTHORS (IFA)'.
+        
+        Analyze the IFA page by page to extract all submission rules (e.g., title length, affiliation format, funding disclosures, data availability, conflicts of interest, reference style, etc.).
+        
+        Then, carefully check the manuscript against each rule you identified.
+        
+        For every major rule found in the IFA, provide a compliance finding according to the provided JSON schema. Be exhaustive and report on all key requirements.
+        - If the manuscript complies with a rule, mark it as 'pass'.
+        - If it clearly violates a rule, mark it as 'fail'.
+        - If compliance is ambiguous or a potential issue is detected, mark it as 'warn'.
+        - Provide exact quotes and page numbers from both documents for every finding.
+
+        MANUSCRIPT TEXT:
+        ${manuscriptText}
+
+        INSTRUCTIONS FOR AUTHORS (IFA) TEXT:
+        ${ifaText}
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro',
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: IFA_COMPLIANCE_SCHEMA,
+            },
+        });
+        const jsonText = response.text.trim();
+        return JSON.parse(jsonText);
+    } catch (error) {
+        console.error("Error calling Gemini API for compliance check:", error);
+        throw new Error("Failed to perform compliance check with Gemini API.");
     }
 }

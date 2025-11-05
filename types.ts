@@ -1,4 +1,3 @@
-
 export enum Role {
   Admin = 'Admin',
   User = 'User',
@@ -55,4 +54,17 @@ export interface ToastData {
   id: string;
   type: 'success' | 'error' | 'info';
   message: string;
+}
+
+export type FindingStatus = 'pass' | 'fail' | 'warn';
+
+export interface ComplianceFinding {
+    checkCategory: string;
+    status: FindingStatus;
+    summary: string;
+    manuscriptQuote: string;
+    manuscriptPage: number;
+    ifaRule: string;
+    ifaPage: number;
+    recommendation: string;
 }

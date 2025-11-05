@@ -7,6 +7,7 @@ import UsageDashboard from './pages/UsageDashboard';
 import AdminPanel from './pages/AdminPanel';
 import { useAppContext } from './hooks/useAppContext';
 import ToastContainer from './components/ToastContainer';
+import { S4CarlisleLogo } from './components/icons/Icons';
 
 export type View = 'tools' | 'dashboard' | 'admin';
 
@@ -50,6 +51,12 @@ export default function App() {
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 lg:p-8">
           {renderView()}
         </main>
+        <footer className="flex-shrink-0 p-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-center space-x-3 text-xs text-gray-500 dark:text-gray-400">
+                <S4CarlisleLogo className="h-5 w-5" />
+                <span>&copy; 2025 S4Carlisle Publishing Services Private Limited</span>
+            </div>
+        </footer>
       </div>
       <ToastContainer />
     </div>
